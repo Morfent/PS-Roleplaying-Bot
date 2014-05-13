@@ -7,24 +7,14 @@
 var http = require('http');
 var sys = require('sys');
 
-var RP = {
-	state: false,
-	plot: '',
-	called: false,
-	setAt: []
-}
-var Host = {
-	state: false,
-	nick: '',
-	called: false
-}
+var RP = { state: false, plot: '', called: false, setAt: [] }
+var Host = { state: false, nick: '', called: false }
 
 var mainRP = Object.create(RP);
 var mainHost = Object.create(Host);
 var amphyRP = Object.create(RP);
 var amphyHost = Object.create(Host);
 var roomRP, roomHost;
-
 
 function getRP(room) {
 	if (room === 'roleplaying') return mainRP;
@@ -41,7 +31,9 @@ exports.commands = {
 	setrp: function(arg, by, room, con) {
 		if (!this.hasRank(by, '+%@#~')) return false;
 		roomRP = getRP(room);
+		if (typeof roomRP === 'undefined') return this.say(con, room, 'Are you seriously trying to start an RP __here?__');
 		if (!arg) return this.say(con, room, 'Please enter an RP.');
+		
 		var username = by.slice(1);
 		roomRP.plot = arg;
 		roomRP.state = true;
@@ -55,6 +47,7 @@ exports.commands = {
 		roomHost = getHost(room);
 		if (!roomRP.state || !roomRP) return this.say(con, room, 'There is no RP, so there is no host.');
 		if (!arg) return this.say(con, room, 'Please enter a host.');
+		
 		roomHost.state = true;
 		roomHost.nick = arg;
 		this.say(con, room, 'The host was set to ' + arg + '.');
@@ -64,6 +57,7 @@ exports.commands = {
 		if (!this.hasRank(by, '+%@#~')) return false;
 		roomHost = getHost(room);
 		if (!roomHost.state || !roomRP) return this.say(con, room, 'There is no host to remove.');
+		
 		roomHost.state = false;
 		roomHost.nick = '';
 		this.say(con, room, 'The host has been removed.');
@@ -73,6 +67,7 @@ exports.commands = {
 		roomRP = getRP(room);
 		roomHost = getHost(room);
 		if (!roomRP.state) return this.say(con, room, 'There is no RP to end.');
+		
 		roomRP.state = false;
 		roomRP.plot = '';
 		roomRP.setBy = '';
@@ -82,12 +77,14 @@ exports.commands = {
 	},
 	rp: function(arg, by, room, con) {
 		roomRP = getRP(room);
-		if (!roomRP || !roomRP.plot) return this.say (con, room, 'There is no ongoing RP.');
+		if (!roomRP || !roomRP.state) return this.say (con, room, 'There is no ongoing RP.');
 		if (roomRP.called) {
 			var text = '/pm ' + by + ', ';
 		} else {
 			var text = '';
 		}
+
+		// Calculates the duration of the RP
 		var start = roomRP.setAt;
 		var now = new Date();
 		var current = [now.getHours(), now.getMinutes(), now.getSeconds()];
@@ -95,19 +92,21 @@ exports.commands = {
 		current[1] = ((current[1] - start[1]) < 0) ? ((current[1] - start[1] + 60) && (--current[0])) : (current[1] - start[1]);
 		current[0] = ((current[0] - start[0]) < 0) ? (current[0] - start[0] + 24) : (current[0] - start[0]);
 		var progress = current[0] + ':' + ((current[1] < 10) ? ('0' + current[1]) : current[1]) + ':' + ((current[2] < 10) ? ('0' + current[2]) : current[2]);
-		if (roomRP.state) this.say(con, room, text + 'The RP is ' + roomRP.plot + ', in progress for ' + progress + '.');
+
+		this.say(con, room, text + 'The RP is ' + roomRP.plot + ', in progress for ' + progress + '.');
 		roomRP.called = true;
 		setTimeout(function() { roomRP.called = false }, 60 * 1000);
 	},
 	host: function(arg, by, room, con) {
 		roomHost = getHost(room);
-		if (!roomHost || !roomHost.nick) return this.say(con, room, 'There is no host.');
+		if (!roomHost || !roomHost.state) return this.say(con, room, 'There is no host.');
 		if (roomHost.called) {
 			var text = '/pm ' + by + ', ';
 		} else {
 			var text = '';
 		}
-		if (roomHost.state) this.say(con, room, text + 'The host is ' + roomHost.nick + '.');
+
+		this.say(con, room, text + 'The host is ' + roomHost.nick + '.');
 		roomHost.called = true;
 		setTimeout(function() { roomHost.called = false }, 60 * 1000);
 	},
@@ -119,22 +118,26 @@ exports.commands = {
 		} else {
 			var text = '/pm ' + by + ', ';
 		}
+
 		this.say(con, room, text + 'Come join our plug.dj! http://plug.dj/a8f892a9/');
 	},
-	vc: function (arg, by, room, con) {
+	vc: function(arg, by, room, con) {
 		if (room !== 'roleplaying' && room !== 'amphyrp') return;
 		if (this.hasRank(by, '+%@#~') || room.charAt(0) === ',') {
 			var text = '';
 		} else {
 			var text = '/pm ' + by + ', ';
 		}
+
 		if (by === '@Morfent' && room === 'amphyrp') return this.say(con, room, 'Special AmphyRP voice challenge: PM a mod any day but Wednesday and Saturday. Good luck!');
 		this.say(con, room, text + '/wall We\'re holding a contest for best user-made RP! The prize is room voice, and the deadline\'s May 20th. Info: tinyurl.com/RPVoiceChallenge');
 	},
-	ampclear: function (arg, by, room, con) {
+	ampclear: function(arg, by, room, con) {
 		if (!this.hasRank(by, '@#~') || room.charAt(0) === ',') return false;
 		if (room !== 'amphyrp') return this.say(con, room, 'This command is not meant to be used outside of AmphyRP.');
 		if (amphyRP.state) return this.say(con, room, 'Please wait until the RP is over before clearing the voice list.');
+
+		// Deroomvoices list of people roomvoiced since either the last time the bot was restarted or the last time .ampclear was user. /roomauth can't be parsed, so this has to be done instead
 		var voices = this.amphyVoices;
 		var self = this;
 		while (voices.length > 0) {
@@ -145,9 +148,10 @@ exports.commands = {
 		}
 		this.amphyVoices = [];
 	},
-	voice: function (arg, by, room, con) {
+	voice: function(arg, by, room, con) {
 		if (room.charAt(0) !== ',') return false;
 		if (!amphyRP.state) return this.say(con, room, '.voice can only be used while an RP is in progress.');
+
 		this.say(con, 'amphyrp', '/roomvoice ' + by);
 	},
 
