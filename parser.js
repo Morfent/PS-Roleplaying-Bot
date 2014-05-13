@@ -14,6 +14,7 @@ var url = require('url');
 
 const ACTION_COOLDOWN = 3*1000;
 const FLOOD_MESSAGE_NUM = 5;
+const FLOOD_PER_MSG_MIN = 500; // this is the minimum time between messages for legitimate spam. It's used to determine what "flooding" is caused by lag
 const FLOOD_MESSAGE_TIME = 6*1000;
 const MIN_CAPS_LENGTH = 18;
 const MIN_CAPS_PROPORTION = 0.8;
@@ -29,6 +30,7 @@ exports.parse = {
 	room: 'lobby',
 	'settings': settings,
 	chatData: {},
+	amphyVoices: [],
 	ranks: {},
 
 	data: function(data, connection) {
@@ -167,18 +169,18 @@ exports.parse = {
 				}
 
 				var self = this;
-				if (cmds.length > 6) {
+				if (cmds.length > 4) {
 					self.nextJoin = 0;
 					self.joinSpacer = setInterval(function(con, cmds) {
-						if (cmds.length > self.nextJoin + 5) {
-							send(con, cmds.slice(self.nextJoin, self.nextJoin + 5));
-							self.nextJoin += 5;
+						if (cmds.length > self.nextJoin + 3) {
+							send(con, cmds.slice(self.nextJoin, self.nextJoin + 3));
+							self.nextJoin += 3;
 						} else {
 							send(con, cmds.slice(self.nextJoin));
 							delete self.nextJoin;
 							clearInterval(self.joinSpacer);
 						}
-					}, 8*1000, connection, cmds);
+					}, 4*1000, connection, cmds);
 				} else {
 					send(connection, cmds);
 				}
@@ -210,17 +212,18 @@ exports.parse = {
 				break;
 			case 'N':
 				var by = spl[2];
+				if ('+'.indexOf(by.charAt(0) === 0) && this.amphyVoices.indexOf(spl[3]) === -1) this.amphyVoices.push(spl[3]);
 				this.updateSeen(spl[3], spl[1], by);
-				if (by.substr(1) !== config.nick || ' +%@&#~'.indexOf(by.charAt(0)) === -1) return;
-				this.ranks[(this.room === '' ? 'lobby' : this.room)] = by.charAt(0);
+				if (toId(by) !== toId(config.nick) || ' +%@&#~'.indexOf(by.charAt(0)) === -1) return;
+				this.ranks[toId(this.room === '' ? 'lobby' : this.room)] = by.charAt(0);
 				this.room = '';
 				break;
 			case 'J': case 'j':
 				var by = spl[2];
 				if (this.room && this.isBlacklisted(toId(by), this.room)) this.say(connection, this.room, '/roomban ' + by + ', Blacklisted user');
 				this.updateSeen(by, spl[1], (this.room === ''?'lobby':this.room));
-				if (by.substr(1) !== config.nick || ' +%@&#~'.indexOf(by.charAt(0)) === -1) return;
-				this.ranks[(this.room === '' ? 'lobby' : this.room)] = by.charAt(0);
+				if (toId(by) !== toId(config.nick) || ' +%@&#~'.indexOf(by.charAt(0)) === -1) return;
+				this.ranks[toId(this.room === '' ? 'lobby' : this.room)] = by.charAt(0);
 				this.room = '';
 				break;
 			case 'l': case 'L':
@@ -232,6 +235,10 @@ exports.parse = {
 	},
 	chatMessage: function(message, by, room, connection) {
 		message = message.trim();
+		// auto accept invitations to rooms
+		if (room.charAt(0) === ',' && message.substr(0,8) === '/invite ' && this.hasRank(by, '%@&~') && !(config.serverid === 'showdown' && toId(message.substr(8)) === 'lobby')) {
+			this.say(connection, '', '/join ' + message.substr(8));
+		}
 		if (message.substr(0, config.commandcharacter.length) !== config.commandcharacter || toId(by) === toId(config.nick)) {
 			return;
 		}
@@ -256,11 +263,6 @@ exports.parse = {
 			} else {
 				error("invalid command type for " + cmd + ": " + (typeof Commands[cmd]));
 			}
-		}
-		
-		// auto accept invitations to rooms
-		if (room.charAt(0) === ',' && message.substr(0,8) === '/invite ' && !(config.serverid === 'showdown' && toId(message.substr(8)) === 'lobby')) {
-			this.say(connection, '', '/join ' + message.substr(8));
 		}
 	},
 	say: function(connection, room, text) {
@@ -308,16 +310,22 @@ exports.parse = {
 	processChatData: function(user, room, connection, msg) {
 		// NOTE: this is still in early stages
 		user = toId(user);
-		if (room.charAt(0) === ',' || user === toId(config.nick)) return;
+		if (!user || room.charAt(0) === ',' || user === toId(config.nick)) return;
 		room = toId(room);
 		msg = msg.trim().replace(/ +/g, " "); // removes extra spaces so it doesn't trigger stretching
 		this.updateSeen(user, 'c', room);
+		var time = Date.now();
+		if (!this.chatData[user]) this.chatData[user] = {
+			zeroTol: 0,
+			lastSeen: '',
+			seenAt: time
+		};
 		if (!this.chatData[user][room]) this.chatData[user][room] = {times:[], points:0, lastAction:0};
 
-		this.chatData[user][room].times.push(Date.now());
+		this.chatData[user][room].times.push(time);
 
 		// this deals with punishing rulebreakers, but note that the bot can't think, so it might make mistakes
-		if (config.allowmute && this.hasRank(this.ranks[room] || ' ', '%@&#~')) {
+		if (config.allowmute && this.hasRank(this.ranks[room] || ' ', '%@&#~') && config.whitelist.indexOf(user) === -1) {
 			var useDefault = !(this.settings['modding'] && this.settings['modding'][room]);
 			var pointVal = 0;
 			var muteMessage = '';
@@ -341,7 +349,8 @@ exports.parse = {
 				}
 			}
 			// moderation for flooding (more than x lines in y seconds)
-			var isFlooding = (this.chatData[user][room].times.length >= FLOOD_MESSAGE_NUM && (Date.now() - this.chatData[user][room].times[this.chatData[user][room].times.length - FLOOD_MESSAGE_NUM]) < FLOOD_MESSAGE_TIME);
+			var isFlooding = (this.chatData[user][room].times.length >= FLOOD_MESSAGE_NUM && (time - this.chatData[user][room].times[this.chatData[user][room].times.length - FLOOD_MESSAGE_NUM]) < FLOOD_MESSAGE_TIME
+				&& (time - this.chatData[user][room].times[this.chatData[user][room].times.length - FLOOD_MESSAGE_NUM]) > (FLOOD_PER_MSG_MIN * FLOOD_MESSAGE_NUM));
 			if ((useDefault || this.settings['modding'][room]['flooding'] !== 0) && isFlooding) {
 				if (pointVal < 2) {
 					pointVal = 2;
@@ -357,7 +366,7 @@ exports.parse = {
 				}
 			}
 			// moderation for stretching (over x consecutive characters in the message are the same)
-			var stretchMatch = msg.toLowerCase().match(/(.)\1{7,}/g); // matches the same character 8 or more times in a row
+			var stretchMatch = msg.toLowerCase().match(/(.)\1{7,}/g) || msg.toLowerCase().match(/(..+)\1{4,}/g); // matches the same character (or group of characters) 8 (or 5) or more times in a row
 			if ((useDefault || this.settings['modding'][room]['stretching'] !== 0) && stretchMatch) {
 				if (pointVal < 1) {
 					pointVal = 1;
@@ -365,7 +374,7 @@ exports.parse = {
 				}
 			}
 
-			if (pointVal > 0 && !(Date.now() - this.chatData[user][room].lastAction < ACTION_COOLDOWN)) {
+			if (pointVal > 0 && !(time - this.chatData[user][room].lastAction < ACTION_COOLDOWN)) {
 				var cmd = 'mute';
 				// defaults to the next punishment in config.punishVals instead of repeating the same action (so a second warn-worthy
 				// offence would result in a mute instead of a warn, and the third an hourmute, etc)
@@ -384,7 +393,7 @@ exports.parse = {
 					cmd = this.hasRank(this.ranks[room] || ' ', '@&#~') ? 'roomban' : 'hourmute';
 				}
 				if (this.chatData[user][room].points >= 2) this.chatData[user].zeroTol++; // getting muted or higher increases your zero tolerance level (warns do not)
-				this.chatData[user][room].lastAction = Date.now();
+				this.chatData[user][room].lastAction = time;
 				this.say(connection, room, '/' + cmd + ' ' + user + muteMessage);
 			}
 		}
@@ -392,6 +401,7 @@ exports.parse = {
 	updateSeen: function(user, type, detail) {
 		user = toId(user);
 		type = toId(type);
+		if (type in {j:1, l:1, c:1} && (config.rooms.indexOf(toId(detail)) === -1 || config.privaterooms.indexOf(toId(detail)) > -1)) return;
 		var time = Date.now();
 		if (!this.chatData[user]) this.chatData[user] = {
 			zeroTol: 0,
@@ -401,7 +411,6 @@ exports.parse = {
 		if (!detail) return;
 		var msg = '';
 		if (type in {j:1, l:1, c:1}) {
-			if (config.rooms.indexOf(toId(detail)) === -1 || config.privaterooms.indexOf(toId(detail)) > -1) return;
 			msg += (type === 'j' ? 'joining' : (type === 'l' ? 'leaving' : 'chatting in')) + ' ' + detail.trim() + '.';
 		} else if (type === 'n') {
 			msg += 'changing nick to ' + ('+%@&#~'.indexOf(detail.trim().charAt(0)) === -1 ? detail.trim() : detail.trim().substr(1)) + '.';

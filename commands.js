@@ -1,4 +1,4 @@
-﻿/**
+/**
  * This is the file where the bot commands are located
  *
  * @license MIT license
@@ -7,7 +7,150 @@
 var http = require('http');
 var sys = require('sys');
 
+var RP = {
+	state: false,
+	plot: '',
+	called: false,
+	setAt: []
+}
+var Host = {
+	state: false,
+	nick: '',
+	called: false
+}
+
+var mainRP = Object.create(RP);
+var mainHost = Object.create(Host);
+var amphyRP = Object.create(RP);
+var amphyHost = Object.create(Host);
+var roomRP, roomHost;
+
+
+function getRP(room) {
+	if (room === 'roleplaying') return mainRP;
+	if (room === 'amphyrp') return amphyRP;
+}
+function getHost(room) {
+	if (room === 'roleplaying') return mainHost;
+	if (room === 'amphyrp') return amphyHost;
+}
+
 exports.commands = {
+	// Roleplaying commands
+	newrp: 'setrp',
+	setrp: function(arg, by, room, con) {
+		if (!this.hasRank(by, '+%@#~')) return false;
+		roomRP = getRP(room);
+		if (!arg) return this.say(con, room, 'Please enter an RP.');
+		var username = by.slice(1);
+		roomRP.plot = arg;
+		roomRP.state = true;
+		var setAt = new Date();
+		roomRP.setAt = [setAt.getHours(), setAt.getMinutes(), setAt.getSeconds()];
+		this.say(con, room, 'The RP was set to ' + arg + '.');
+	},
+	newhost: 'sethost',
+	sethost: function(arg, by, room, con) {
+		if (!this.hasRank(by, '+%@#~')) return false;
+		roomHost = getHost(room);
+		if (!roomRP.state || !roomRP) return this.say(con, room, 'There is no RP, so there is no host.');
+		if (!arg) return this.say(con, room, 'Please enter a host.');
+		roomHost.state = true;
+		roomHost.nick = arg;
+		this.say(con, room, 'The host was set to ' + arg + '.');
+	},
+	removehost: 'rmhost',
+	rmhost: function(arg, by, room, con) {
+		if (!this.hasRank(by, '+%@#~')) return false;
+		roomHost = getHost(room);
+		if (!roomHost.state || !roomRP) return this.say(con, room, 'There is no host to remove.');
+		roomHost.state = false;
+		roomHost.nick = '';
+		this.say(con, room, 'The host has been removed.');
+	},
+	endrp: function(arg, by, room, con) {
+		if (!this.hasRank(by, '+%@#~')) return false;
+		roomRP = getRP(room);
+		roomHost = getHost(room);
+		if (!roomRP.state) return this.say(con, room, 'There is no RP to end.');
+		roomRP.state = false;
+		roomRP.plot = '';
+		roomRP.setBy = '';
+		roomHost.state = false;
+		roomHost.nick = '';
+		this.say(con, room, '/wall The RP has ended.');
+	},
+	rp: function(arg, by, room, con) {
+		roomRP = getRP(room);
+		if (!roomRP || !roomRP.plot) return this.say (con, room, 'There is no ongoing RP.');
+		if (roomRP.called) {
+			var text = '/pm ' + by + ', ';
+		} else {
+			var text = '';
+		}
+		var start = roomRP.setAt;
+		var now = new Date();
+		var current = [now.getHours(), now.getMinutes(), now.getSeconds()];
+		current[2] = ((current[2] - start[2]) < 0) ? ((current[2] - start[2] + 60) && (--current[1])) : (current[2] - start[2]);
+		current[1] = ((current[1] - start[1]) < 0) ? ((current[1] - start[1] + 60) && (--current[0])) : (current[1] - start[1]);
+		current[0] = ((current[0] - start[0]) < 0) ? (current[0] - start[0] + 24) : (current[0] - start[0]);
+		var progress = current[0] + ':' + ((current[1] < 10) ? ('0' + current[1]) : current[1]) + ':' + ((current[2] < 10) ? ('0' + current[2]) : current[2]);
+		if (roomRP.state) this.say(con, room, text + 'The RP is ' + roomRP.plot + ', in progress for ' + progress + '.');
+		roomRP.called = true;
+		setTimeout(function() { roomRP.called = false }, 60 * 1000);
+	},
+	host: function(arg, by, room, con) {
+		roomHost = getHost(room);
+		if (!roomHost || !roomHost.nick) return this.say(con, room, 'There is no host.');
+		if (roomHost.called) {
+			var text = '/pm ' + by + ', ';
+		} else {
+			var text = '';
+		}
+		if (roomHost.state) this.say(con, room, text + 'The host is ' + roomHost.nick + '.');
+		roomHost.called = true;
+		setTimeout(function() { roomHost.called = false }, 60 * 1000);
+	},
+	rpplug: 'plug',
+	plug: function(arg, by, room, con) {
+		if (room !== 'roleplaying' && room !== 'amphyrp') return;
+		if (this.hasRank(by, '+%@#~') || room.charAt(0) === ',') {
+			var text = '';
+		} else {
+			var text = '/pm ' + by + ', ';
+		}
+		this.say(con, room, text + 'Come join our plug.dj! http://plug.dj/a8f892a9/');
+	},
+	vc: function (arg, by, room, con) {
+		if (room !== 'roleplaying' && room !== 'amphyrp') return;
+		if (this.hasRank(by, '+%@#~') || room.charAt(0) === ',') {
+			var text = '';
+		} else {
+			var text = '/pm ' + by + ', ';
+		}
+		if (by === '@Morfent' && room === 'amphyrp') return this.say(con, room, 'Special AmphyRP voice challenge: PM a mod any day but Wednesday and Saturday. Good luck!');
+		this.say(con, room, text + '/wall We\'re holding a contest for best user-made RP! The prize is room voice, and the deadline\'s May 20th. Info: tinyurl.com/RPVoiceChallenge');
+	},
+	ampclear: function (arg, by, room, con) {
+		if (!this.hasRank(by, '@#~') || room.charAt(0) === ',') return false;
+		if (room !== 'amphyrp') return this.say(con, room, 'This command is not meant to be used outside of AmphyRP.');
+		if (amphyRP.state) return this.say(con, room, 'Please wait until the RP is over before clearing the voice list.');
+		var voices = this.amphyVoices;
+		var self = this;
+		while (voices.length > 0) {
+			for (var i in voices) {
+				self.say(con, room, '/roomdevoice ' + voices[i])
+			var voice = voices.splice(i, 1);
+			}
+		}
+		this.amphyVoices = [];
+	},
+	voice: function (arg, by, room, con) {
+		if (room.charAt(0) !== ',') return false;
+		if (!amphyRP.state) return this.say(con, room, '.voice can only be used while an RP is in progress.');
+		this.say(con, 'amphyrp', '/roomvoice ' + by);
+	},
+
 	/**
 	 * Help commands
 	 *
@@ -101,6 +244,7 @@ exports.commands = {
 			wifi: 1,
 			monotype: 1,
 			autoban: 1,
+			happy: 1,
 			guia: 1
 		};
 		var modOpts = {
@@ -203,7 +347,7 @@ exports.commands = {
 	ab: 'autoban',
 	autoban: function(arg, by, room, con) {
 		if (!this.canUse('autoban', room, by) || room.charAt(0) === ',') return false;
-		if (!this.hasRank(this.ranks[toId(room)], '@&#~')) return this.say(con, room, config.nick + ' requires rank of @ or higher to (un)blacklist.');
+		if (!this.hasRank(this.ranks[toId(room)] || ' ', '@&#~')) return this.say(con, room, config.nick + ' requires rank of @ or higher to (un)blacklist.');
 
 		arg = arg.split(',');
 		var added = [];
@@ -238,7 +382,7 @@ exports.commands = {
 	unab: 'unautoban',
 	unautoban: function(arg, by, room, con) {
 		if (!this.canUse('autoban', room, by) || room.charAt(0) === ',') return false;
-		if (!this.hasRank(this.ranks[toId(room)], '@&#~')) return this.say(con, room, config.nick + ' requires rank of @ or higher to (un)blacklist.');
+		if (!this.hasRank(this.ranks[toId(room)] || ' ', '@&#~')) return this.say(con, room, config.nick + ' requires rank of @ or higher to (un)blacklist.');
 
 		arg = arg.split(',');
 		var removed = [];
@@ -272,13 +416,14 @@ exports.commands = {
 	viewblacklist: function(arg, by, room, con) {
 		if (!this.canUse('bl', room, by) || room.charAt(0) === ',') return false;
 
+		// use .js Object.keys(this.settings.blacklist.roleplaying).slice(number of blacklisted users) and save to settings.js manually in between restarts
 		var text = '';
 		if (!this.settings.blacklist || !this.settings.blacklist[room]) {
 			text = 'No users are blacklisted in this room.';
 		} else {
 			var nickList = Object.keys(this.settings.blacklist[room]);
 			text = 'The following users are blacklisted: ' + nickList.join(', ');
-			if (text.length > 300) text = 'Too many users to list.';
+			if (text.length > 300) text = 'Too many users to list. Number of users since last restart: ' + this.settings.oldab + ', number of users added: ' + (nickList.length - this.settings.oldab);
 			if (!nickList.length) text = 'No users are blacklisted in this room.';
 		}
 		this.say(con, room, '/pm ' + by + ', ' + text);
@@ -350,7 +495,7 @@ exports.commands = {
 		} else {
 			var text = '/pm ' + by + ', ';
 		}
-		text += 'http://sim.smogon.com:8080/Stats/2014-03/';
+		text += 'http://sim.smogon.com:8080/Stats/2014-04/';
 		this.say(con, room, text);
 	},
 	seen: function(arg, by, room, con) {
@@ -426,7 +571,7 @@ exports.commands = {
 			rules: 'The rules for the Wi-Fi room can be found here: http://pstradingroom.weebly.com/rules.html',
 			faq: 'Wi-Fi room FAQs: http://pstradingroom.weebly.com/faqs.html',
 			faqs: 'Wi-Fi room FAQs: http://pstradingroom.weebly.com/faqs.html',
-			scammers: 'List of known scammers: http://tiny.cc/scammerreport',
+			scammers: 'List of known scammers: http://tinyurl.com/psscammers',
 			cloners: 'List of approved cloners: http://goo.gl/WO8Mf4',
 			tips: 'Scamming prevention tips: http://pstradingroom.weebly.com/scamming-prevention-tips.html',
 			breeders: 'List of breeders: http://tinyurl.com/WiFIBReedingBrigade',
@@ -483,9 +628,16 @@ exports.commands = {
 		var text = '';
 		if (!this.canUse('games', room, by)) {
 			text += '/pm ' + by + ', ';
-		};
+		}
 		this.say(con, room, text + 'Game List: 1. Would You Rather, 2. NickGames, 3. Scattegories, 4. Commonyms, 5. Questionnaires, 6. Funarios, 7. Anagrams, 8. Spot the Reference, 9. Pokemath, 10. Liar\'s Dice');
 		this.say(con, room, text + '11. Pun Game, 12. Dice Cup, 13. Who\'s That Pokemon?, 14. Pokemon V Pokemon (BST GAME), 15. Letter Getter, 16. Missing Link, 17. Parameters! More information can be found here: http://psgamecorner.weebly.com/games.html');
+	},
+	happy: function(arg, by, room, con) {
+		// info for The Happy Place
+		if (!(toId(room) === 'thehappyplace' && config.serverid === 'showdown')) return false;
+		var text = '';
+		if (!this.canUse('happy', room, by)) text += '/pm ' + by + ', ';
+		this.say(con, room, text + "The Happy Place, at its core, is a friendly environment for anyone just looking for a place to hang out and relax. We also specialize in taking time to give advice on life problems for users. Need a place to feel at home and unwind? Look no further!");
 	},
 
 
