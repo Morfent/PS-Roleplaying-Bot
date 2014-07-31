@@ -575,7 +575,7 @@ exports.commands = {
 	                if (!this.RP[room].doc) { 
 		this.say(con, room, text + 'The RP is ' + this.RP[room].plot + ', in progress for ' + progress + '.');
                 } else {
-                this.say(con, room, text + 'The RP is ' + this.RP[room].plot + ', in progress for ' + progress + '. And the doc can be found at ' + this.RP[room].doc);
+                this.say(con, room, text + 'The RP is ' + this.RP[room].plot + ', in progress for ' + progress + '. The doc can be found at ' + this.RP[room].doc);
                 }
 	},
 	setdoc: function(arg, by, room, con) {
