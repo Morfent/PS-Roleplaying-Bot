@@ -572,7 +572,37 @@ exports.commands = {
 		var progress = hours + ':' + ((minutes < 10) ? '0' + minutes : minutes) + ':' + ((seconds < 10) ? '0' + seconds : seconds);
 
 		if (this.RP[room].pause) return this.say(con, room, text + 'The RP is ' + this.RP[room].plot + ', but it is paused. Paused at: ' + progress);
+	                if (!this.RP[room].doc) { 
 		this.say(con, room, text + 'The RP is ' + this.RP[room].plot + ', in progress for ' + progress + '.');
+                } else {
+                this.say(con, room, text + 'The RP is ' + this.RP[room].plot + ', in progress for ' + progress + '. And the doc can be found at ' + this.RP[room].doc);
+                }
+	},
+	setdoc: function(arg, by, room, con) {
+		if (!this.hasRank(by, '+%@#~')) return false;
+		if (!arg) return this.say(con, room, 'Please enter a document link link.');
+
+		this.RP[room].doc = arg;
+		this.say(con, room, 'The document was set to ' + arg + '.');
+	},
+	doc: function(arg, by, room, con) {
+		if (!(room in this.RP) || room.charAt(0) === ',') return false;
+                if (!this.hasRank(by, '+%@#~')) { 
+			var text = '/pm ' + by + ', ';
+		} else {
+			var text = '';
+			var self = this;
+			this.RP[room].docCalled = true;
+			setTimeout(function() { delete self.RP[room].docCalled; }, 60 * 1000);
+		}
+		if (!this.RP[room].doc) return this.say(con, room, text + 'There is no document set.');
+		this.say(con, room, text + 'The current document for the RP is available at ' + this.RP[room].doc + '.');
+		},
+	rmdoc: function(arg, by, room, con) {
+		if (!this.hasRank(by, '+%@#~')) return false;
+		if (!this.RP[room].doc) return this.say(con, room, 'There isn\'t a document to remove. :/');
+		this.say(con, room, 'The document has been removed.');
+		delete this.RP[room].doc;
 	},
 	host: function(arg, by, room, con) {
 		if (!(room in this.RP) || room.charAt(0) === ',') return false;
