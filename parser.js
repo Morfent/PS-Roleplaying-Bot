@@ -228,7 +228,10 @@ exports.parse = {
 				spl.splice(0, 4);
 				this.chatMessage(spl.join('|'), by, ',' + by, connection);
 				this.room = '';
-				break;
+                                if (config.logpms) {
+                                console.log('Private Message from ' + by + ': ' + spl)
+                                } else {};
+                                break;
 			case 'N':
 				var by = spl[2];
 				this.updateSeen(spl[3], spl[1], by);
