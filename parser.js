@@ -227,7 +227,7 @@ exports.parse = {
 				if (by.substr(1) === config.nick) return;
 				spl.splice(0, 4);
 				this.chatMessage(spl.join('|'), by, ',' + by, connection);
-				this.room = ''
+				this.room = '';
 				if (config.logpms) console.log('Private Message from ' + by + ': ' + spl);
                                 break;
 			case 'N':
