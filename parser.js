@@ -229,7 +229,7 @@ exports.parse = {
 				this.chatMessage(spl.join('|'), by, ',' + by, connection);
 				this.room = '';
 				if (config.logpms) console.log('Private Message from ' + by + ': ' + spl);
-                                break;
+				break;
 			case 'N':
 				var by = spl[2];
 				this.updateSeen(spl[3], spl[1], by);
