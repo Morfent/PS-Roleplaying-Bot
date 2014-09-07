@@ -228,6 +228,7 @@ exports.parse = {
 				spl.splice(0, 4);
 				this.chatMessage(spl.join('|'), by, ',' + by, connection);
 				this.room = '';
+				if (config.logpms) console.log('Private Message from ' + by + ': ' + spl);
 				break;
 			case 'N':
 				var by = spl[2];
