@@ -53,6 +53,11 @@ exports.watchconfig = false;
 // doesn't support that yet, so it's best to leave this empty.
 exports.secprotocols = [];
 
+// Time in minutes the bot can go without receiving a chat message before resetting.
+// Refreshes the websocket connection in case it drops without a closing handshake.
+// Leave blank or 0 if you do not wish for the bot to refresh it's own connection.
+exports.resetduration = 0;
+
 // What should be logged?
 // 0 = error, ok, info, debug, recv, send
 // 1 = error, ok, info, debug, cmdr, send

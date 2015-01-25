@@ -184,14 +184,17 @@ var connect = function(retry) {
 			error('connection error: ' + sys.inspect(err));
 		});
 
-		connection.on('close', function() {
-			// Is this always error or can this be intended...?
-			error('connection closed: ' + sys.inspect(arguments));
-			info('retrying in one minute');
-
-			setTimeout(function() {
-				connect(true);
-			}, 60000);
+		connection.on('close', function() {		
+			if (arguments['0'] === 1000) {
+				info('connection closed normally; resetting');
+				connect(false);
+			} else {
+				error('connection closed: ' + sys.inspect(arguments));
+				info('retrying in one minute');
+				setTimeout(function() {
+					connect(true);
+				}, 60000);
+			}
 		});
 
 		connection.on('message', function(message) {
@@ -200,6 +203,15 @@ var connect = function(retry) {
 				Parse.data(message.utf8Data, connection);
 			}
 		});
+		if (config.resetduration) {
+			global.refreshConnectionTimer = function() {
+				global.connectionTimer = setTimeout(function() {
+					error(config.resetduration + ' minutes without chat message.');
+					info('refreshing connection');
+					connection.close();
+				}, config.resetduration * 60000);
+			}
+		}
 	});
 
 	// The connection itself

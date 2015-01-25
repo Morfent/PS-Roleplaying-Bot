@@ -341,6 +341,11 @@ exports.parse = {
 		var userData = this.chatData[user];
 		if (!this.chatData[user][room]) this.chatData[user][room] = {times:[], points:0, lastAction:0};
 		var roomData = userData[room];
+		
+		if (config.resetduration) {
+			clearTimeout(global.connectionTimer);
+			refreshConnectionTimer();
+		}
 
 		// this deals with punishing rulebreakers, but note that the bot can't think, so it might make mistakes
 		if (config.allowmute && this.hasRank(this.ranks[room] || ' ', '%@&#~') && config.whitelist.indexOf(user) === -1) {
